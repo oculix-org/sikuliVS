@@ -21,6 +21,7 @@ import { LocationCodeLensProvider } from './providers/locationCodeLensProvider';
 import { log, outputChannel } from './utils/output';
 import { diagnosticCollection } from './utils/runDiagnostics';
 import { discardPending, sweepStaleTempDirs } from './debug/captures';
+import { stopAllRuns } from './bridge/sikulixBridge';
 
 // Target files for background features (Hover, CodeLens)
 const PYTHON_FILE_SELECTOR: vscode.DocumentSelector = { scheme: 'file', language: 'python' };
@@ -88,6 +89,7 @@ function registerProviders(context: vscode.ExtensionContext): void {
  * Cleanup function called automatically when the extension is disabled or uninstalled.
  * (VS Code handles standard subscription disposal automatically).
  */
-export function deactivate(): void {
+export function deactivate(): Promise<void> {
     discardPending();
+    return stopAllRuns();
 }

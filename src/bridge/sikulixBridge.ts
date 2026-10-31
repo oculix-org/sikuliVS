@@ -20,6 +20,8 @@ const KILL_GRACE_MS = 3000;
 // OculiX prints these at every startup, whatever its debug level is set to.
 const STARTUP_CHATTER = /^\[DEBUG STARTUP\] /;
 
+const liveRuns = new Set<SikulixRun>();
+
 /**
  * Puts Java in device pixels.
  *
@@ -113,7 +115,7 @@ export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) =
         });
     });
 
-    return {
+    const run: SikulixRun = {
         exited,
         stop: () => {
             const pid = child.pid;
@@ -135,6 +137,19 @@ export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) =
             killTimer = setTimeout(() => signalGroup(pid, 'SIGKILL'), KILL_GRACE_MS);
         }
     };
+
+    liveRuns.add(run);
+    const forget = () => liveRuns.delete(run);
+    exited.then(forget, forget);
+
+    return run;
+}
+
+/** Stops every script still running and waits for them to exit. */
+export async function stopAllRuns(): Promise<void> {
+    const runs = [...liveRuns];
+    runs.forEach(run => run.stop());
+    await Promise.allSettled(runs.map(run => run.exited));
 }
 
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
@@ -157,18 +172,16 @@ export function launchEnvironment(
     base: NodeJS.ProcessEnv = process.env
 ): NodeJS.ProcessEnv {
     const existing = base[TOOL_OPTIONS];
+    const chosen = (launch.jvmArgs ?? []).filter(arg => arg.startsWith(UI_SCALE_PROPERTY));
 
-    // A deliberately chosen scale is left alone here too, wherever it was set.
-    const alreadySet = (launch.jvmArgs ?? []).some(arg => arg.startsWith(UI_SCALE_PROPERTY))
-        || (existing ?? '').includes('sun.java2d.uiScale');
-
-    if (alreadySet) {
+    if (chosen.length === 0 && (existing ?? '').includes(UI_SCALE_PROPERTY.slice(2))) {
         return { ...base };
     }
 
+    const scale = chosen.length > 0 ? chosen : UI_SCALE_ARGS;
     return {
         ...base,
-        [TOOL_OPTIONS]: [existing, ...UI_SCALE_ARGS].filter(Boolean).join(' ')
+        [TOOL_OPTIONS]: [existing, ...scale].filter(Boolean).join(' ')
     };
 }
 

@@ -3,7 +3,7 @@ import { test, describe } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { buildRunArgs, launchEnvironment, runSikulixScript, SikulixRun } from '../bridge/sikulixBridge';
+import { buildRunArgs, launchEnvironment, runSikulixScript, SikulixRun, stopAllRuns } from '../bridge/sikulixBridge';
 
 const BASE = {
     javaPath: 'java',
@@ -64,9 +64,22 @@ describe('SikuliX launch environment', () => {
         assert.equal(env.JAVA_TOOL_OPTIONS, `-Xshare:auto ${UI_SCALE} ${UI_SCALE_OFF}`);
     });
 
-    test('leaves a scale chosen in jvmArgs alone', () => {
+    test('carries a scale chosen in jvmArgs instead of its own', () => {
         const env = launchEnvironment({ ...BASE, jvmArgs: ['-Dsun.java2d.uiScale=2'] }, {});
-        assert.equal(env.JAVA_TOOL_OPTIONS, undefined);
+        assert.equal(env.JAVA_TOOL_OPTIONS, '-Dsun.java2d.uiScale=2');
+    });
+
+    test('a scale chosen in jvmArgs comes after one already in the environment, so it wins', () => {
+        const env = launchEnvironment(
+            { ...BASE, jvmArgs: ['-Dsun.java2d.uiScale=2'] },
+            { JAVA_TOOL_OPTIONS: '-Dsun.java2d.uiScale=3' }
+        );
+        assert.equal(env.JAVA_TOOL_OPTIONS, '-Dsun.java2d.uiScale=3 -Dsun.java2d.uiScale=2');
+    });
+
+    test('carries no other jvmArgs, since the environment refuses forms the command line accepts', () => {
+        const env = launchEnvironment({ ...BASE, jvmArgs: ['-cp', '/tmp', '-Xmx512m'] }, {});
+        assert.equal(env.JAVA_TOOL_OPTIONS, `${UI_SCALE} ${UI_SCALE_OFF}`);
     });
 
     test('leaves a scale already in the environment alone', () => {
@@ -160,5 +173,25 @@ describe('stopping a run', { skip: process.platform === 'win32' }, () => {
         const { run } = await launch('echo 1');
         await run.exited;
         run.stop();
+    });
+
+    test('stopAllRuns ends every live run and waits for them', { timeout: 10000 }, async () => {
+        const first = await launch('sleep 60 &\necho $!\nwait');
+        const second = await launch('sleep 60 &\necho $!\nwait');
+        await stopAllRuns();
+        assert.equal(isAlive(first.descendant), false);
+        assert.equal(isAlive(second.descendant), false);
+    });
+
+    test('stopAllRuns waits out a run that ignores the polite signal', { timeout: 10000 }, async () => {
+        const { descendant } = await launch("trap '' TERM\nsleep 60 &\necho $!\nwait");
+        await stopAllRuns();
+        assert.equal(isAlive(descendant), false);
+    });
+
+    test('stopAllRuns has nothing to do once runs are over', { timeout: 10000 }, async () => {
+        const { run } = await launch('echo 1');
+        await run.exited;
+        await stopAllRuns();
     });
 });
