@@ -1,6 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { test, describe } from 'node:test';
-import { buildRunArgs, launchEnvironment } from '../bridge/sikulixBridge';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { buildRunArgs, launchEnvironment, runSikulixScript, SikulixRun } from '../bridge/sikulixBridge';
 
 const BASE = {
     javaPath: 'java',
@@ -75,5 +78,65 @@ describe('SikuliX launch environment', () => {
     test('preserves the rest of the environment', () => {
         const env = launchEnvironment(BASE, { PATH: '/usr/bin' });
         assert.equal(env.PATH, '/usr/bin');
+    });
+});
+
+describe('stopping a run', { skip: process.platform === 'win32' }, () => {
+    /**
+     * Starts a shell script in place of java. It prints the pid of a process it leaves
+     * running, the way SikuliX 2.0.5 hands a script over to a second JVM.
+     */
+    async function launch(script: string): Promise<{ run: SikulixRun; descendant: number }> {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svs-test-'));
+        const fakeJava = path.join(dir, 'java');
+        fs.writeFileSync(fakeJava, `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+
+        let run!: SikulixRun;
+        const descendant = await new Promise<number>((resolve) => {
+            run = runSikulixScript(
+                { ...BASE, javaPath: fakeJava, cwd: dir },
+                line => resolve(Number(line))
+            );
+        });
+        void run.exited.finally(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+        return { run, descendant };
+    }
+
+    function isAlive(pid: number): boolean {
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    test('ends what the launched process started', { timeout: 10000 }, async () => {
+        const { run, descendant } = await launch('sleep 60 &\necho $!\nwait');
+        run.stop();
+        await run.exited;
+        assert.equal(isAlive(descendant), false);
+    });
+
+    test('still works once the launched process has already exited', { timeout: 10000 }, async () => {
+        const { run, descendant } = await launch('sleep 60 &\necho $!');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        run.stop();
+        await run.exited;
+        assert.equal(isAlive(descendant), false);
+    });
+
+    test('forces anything that ignores the polite signal', { timeout: 10000 }, async () => {
+        const { run, descendant } = await launch("trap '' TERM\nsleep 60 &\necho $!\nwait");
+        run.stop();
+        await run.exited;
+        assert.equal(isAlive(descendant), false);
+    });
+
+    test('does nothing once the run is over', { timeout: 10000 }, async () => {
+        const { run } = await launch('echo 1');
+        await run.exited;
+        run.stop();
     });
 });

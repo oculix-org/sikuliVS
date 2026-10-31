@@ -98,33 +98,6 @@ function isWaylandSession(): boolean {
     return Boolean(process.env.WAYLAND_DISPLAY) || process.env.XDG_SESSION_TYPE === 'wayland';
 }
 
-// SikuliX publishes two jars. The IDE one bundles its own editor and re-executes java on
-// startup, so JVM options passed on the command line are dropped before a script runs, and
-// nothing the extension sets on the command line survives. The API jar runs in the process
-// it is given.
-const IDE_JAR = /sikulixide/i;
-
-let ideJarWarned = false;
-
-/**
- * Says so when the configured jar is the IDE build rather than the API one. Warned once per
- * session and never blocking: it mostly works, so refusing to run would be worse than
- * saying what is wrong.
- */
-function warnAboutIdeJar(jarPath: string): void {
-    if (ideJarWarned || !IDE_JAR.test(path.basename(jarPath))) {
-        return;
-    }
-    ideJarWarned = true;
-
-    log(`[run] warning: ${path.basename(jarPath)} is the IDE jar, not the API jar`);
-    void vscode.window.showWarningMessage(
-        `SikuliVS: ${path.basename(jarPath)} is the SikuliX IDE jar. It restarts the Java ` +
-        'runtime on startup, which discards the options this extension sets, including the ' +
-        'display scale fix that keeps coordinates correct. Use sikulixapi-<version>.jar instead.'
-    );
-}
-
 /**
  * The configured jar, else one sitting in a workspace root, else ask.
  */
@@ -137,14 +110,12 @@ async function resolveJarPath(config: vscode.WorkspaceConfiguration): Promise<st
             );
             return null;
         }
-        warnAboutIdeJar(configured);
         return configured;
     }
 
     const discovered = findJarInWorkspace();
     if (discovered) {
         log(`[run] using discovered jar: ${discovered}`);
-        warnAboutIdeJar(discovered);
         return discovered;
     }
 
@@ -175,7 +146,7 @@ function findJarInWorkspace(): string | null {
 
 async function promptForJar(config: vscode.WorkspaceConfiguration): Promise<string | null> {
     const choice = await vscode.window.showErrorMessage(
-        'SikuliVS: No SikuliX jar configured. Running scripts needs sikulixapi-<version>.jar.',
+        'SikuliVS: No SikuliX jar configured. Running scripts needs one, such as sikulixapi-<version>-<platform>.jar.',
         'Select Jar...'
     );
     if (choice !== 'Select Jar...') {

@@ -37,12 +37,10 @@ const UI_SCALE_ARGS = [`${UI_SCALE_PROPERTY}=1`, `${UI_SCALE_PROPERTY}.enabled=f
 /**
  * The same properties again, for a JVM we do not launch ourselves.
  *
- * The SikuliX IDE jar re-executes java rather than running in the process it was started
- * in, and the replacement inherits the environment but not the command line, so options
- * passed as arguments are silently dropped. Measured, not guessed: a diagnostic report
- * from a scaled Windows display showed `sun.java2d.uiScale` unset inside the JVM that ran
- * the script, while the argument had certainly been passed to the one that was launched.
- * Every JVM reads JAVA_TOOL_OPTIONS out of the environment, so this survives the hand off.
+ * SikuliX 2.0.5, in both its API and IDE jars, re-executes java rather than running in the
+ * process it was started in. The replacement inherits the environment but not the command
+ * line, so options passed as arguments never reach the JVM that runs the script. Every JVM
+ * reads JAVA_TOOL_OPTIONS out of the environment, so this survives the hand off.
  */
 const TOOL_OPTIONS = 'JAVA_TOOL_OPTIONS';
 
@@ -78,7 +76,9 @@ export function buildRunArgs(launch: SikulixLaunch): string[] {
 export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) => void): SikulixRun {
     const child = spawn(launch.javaPath, buildRunArgs(launch), {
         cwd: launch.cwd,
-        env: launchEnvironment(launch)
+        env: launchEnvironment(launch),
+        // A process group of its own, so that stop() also reaches a JVM started in its place.
+        detached: process.platform !== 'win32'
     });
 
     const stdout = new LineSplitter(onLine);
@@ -87,6 +87,7 @@ export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) =
     child.stderr.on('data', (chunk: Buffer) => stderr.write(chunk.toString()));
 
     let killTimer: NodeJS.Timeout | undefined;
+    let closed = false;
 
     const exited = new Promise<number>((resolve, reject) => {
         child.on('error', (err) => {
@@ -94,6 +95,7 @@ export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) =
             reject(err);
         });
         child.on('close', (code) => {
+            closed = true;
             clearTimeout(killTimer);
             stdout.flush();
             stderr.flush();
@@ -104,23 +106,33 @@ export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) =
     return {
         exited,
         stop: () => {
-            if (child.exitCode !== null || child.signalCode !== null) {
+            const pid = child.pid;
+            if (closed || pid === undefined) {
                 return;
             }
 
             // Windows has no signals: kill() is an immediate termination of the JVM alone,
             // which strands anything the script started. taskkill takes the tree.
-            if (process.platform === 'win32' && child.pid !== undefined) {
-                const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true });
+            if (process.platform === 'win32') {
+                const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], { windowsHide: true });
                 // An unhandled error event here would take the extension host down with it.
                 killer.on('error', () => child.kill());
                 return;
             }
 
-            child.kill('SIGTERM');
-            killTimer = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS);
+            signalGroup(pid, 'SIGTERM');
+            clearTimeout(killTimer);
+            killTimer = setTimeout(() => signalGroup(pid, 'SIGKILL'), KILL_GRACE_MS);
         }
     };
+}
+
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
+    try {
+        process.kill(-pid, signal);
+    } catch {
+        // Everything in the group has already exited.
+    }
 }
 
 /**

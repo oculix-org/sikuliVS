@@ -138,7 +138,7 @@ function jarIsSet(): boolean {
 
 /**
  * Asks for the jar, which the extension cannot download: SikuliX publishes a different
- * build per platform and the API one is the right one.
+ * build per platform.
  */
 async function setUpJar(): Promise<boolean> {
     if (jarIsSet()) {
@@ -146,7 +146,7 @@ async function setUpJar(): Promise<boolean> {
     }
 
     const choice = await vscode.window.showInformationMessage(
-        'SikuliVS: Running scripts needs the SikuliX API jar, sikulixapi-<version>-<platform>.jar. ' +
+        'SikuliVS: Running scripts needs a SikuliX jar, such as sikulixapi-<version>-<platform>.jar. ' +
         'It is not bundled, since each platform has its own build.',
         'Select Jar...',
         'Skip'

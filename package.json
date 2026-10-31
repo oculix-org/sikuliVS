@@ -160,7 +160,7 @@
         "sikuliVS.jarPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path to `sikulixapi-<version>.jar`. The jar is platform specific, so use the one built for this machine, e.g. `sikulixapi-2.0.5-win.jar` on Windows. When empty, a `sikulix*.jar` found in a workspace root is used."
+          "markdownDescription": "Absolute path to the SikuliX jar. It is platform specific, so use the one built for this machine, e.g. `sikulixapi-2.0.5-windows.jar` on Windows. OculiX runs scripts from its IDE jar, `oculixide-<version>-<platform>.jar`. When empty, a `sikulix*.jar` found in a workspace root is used."
         },
         "sikuliVS.javaPath": {
           "type": "string",
@@ -185,7 +185,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Extra JVM arguments, e.g. `--enable-native-access=ALL-UNNAMED` to silence Java 24+ native access warnings. Options are never added automatically, since older JVMs reject unknown ones. The single exception is `-Dsun.java2d.uiScale=1`, which every JVM accepts and which keeps Java's coordinates in the same pixels the visual tools use on a scaled display; set your own `-Dsun.java2d.uiScale` here to override it."
+          "markdownDescription": "Extra JVM arguments, e.g. `--enable-native-access=ALL-UNNAMED` to silence Java 24+ native access warnings. SikuliX 2.0.5 restarts Java on startup, so on that version these reach only the JVM that is launched, not the one running the script; use the `JAVA_TOOL_OPTIONS` environment variable for those. Options are never added automatically, since older JVMs reject unknown ones. The single exception is `-Dsun.java2d.uiScale=1`, which every JVM accepts and which keeps Java's coordinates in the same pixels the visual tools use on a scaled display; set your own `-Dsun.java2d.uiScale` here to override it."
         },
         "sikuliVS.debug.captureMode": {
           "type": "string",
