@@ -81,6 +81,28 @@ describe('SikuliX launch environment', () => {
     });
 });
 
+describe('run output', { skip: process.platform === 'win32' }, () => {
+    async function outputOf(debugLevel: number): Promise<string[]> {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svs-test-'));
+        const fakeJava = path.join(dir, 'java');
+        fs.writeFileSync(fakeJava, "#!/bin/sh\necho '[DEBUG STARTUP] loading'\necho hello\n", { mode: 0o755 });
+
+        const lines: string[] = [];
+        const run = runSikulixScript({ ...BASE, javaPath: fakeJava, cwd: dir, debugLevel }, line => lines.push(line));
+        await run.exited;
+        fs.rmSync(dir, { recursive: true, force: true });
+        return lines;
+    }
+
+    test('hides OculiX startup chatter at debug level 0', async () => {
+        assert.deepEqual(await outputOf(0), ['hello']);
+    });
+
+    test('shows it once a debug level is set', async () => {
+        assert.deepEqual(await outputOf(1), ['[DEBUG STARTUP] loading', 'hello']);
+    });
+});
+
 describe('stopping a run', { skip: process.platform === 'win32' }, () => {
     /**
      * Starts a shell script in place of java. It prints the pid of a process it leaves

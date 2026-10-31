@@ -17,6 +17,9 @@ export interface SikulixRun {
 
 const KILL_GRACE_MS = 3000;
 
+// OculiX prints these at every startup, whatever its debug level is set to.
+const STARTUP_CHATTER = /^\[DEBUG STARTUP\] /;
+
 /**
  * Puts Java in device pixels.
  *
@@ -81,8 +84,15 @@ export function runSikulixScript(launch: SikulixLaunch, onLine: (line: string) =
         detached: process.platform !== 'win32'
     });
 
-    const stdout = new LineSplitter(onLine);
-    const stderr = new LineSplitter(onLine);
+    const emit = launch.debugLevel
+        ? onLine
+        : (line: string) => {
+            if (!STARTUP_CHATTER.test(line)) {
+                onLine(line);
+            }
+        };
+    const stdout = new LineSplitter(emit);
+    const stderr = new LineSplitter(emit);
     child.stdout.on('data', (chunk: Buffer) => stdout.write(chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => stderr.write(chunk.toString()));
 

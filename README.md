@@ -8,13 +8,16 @@ it.
 
 ## Which SikuliX
 
-Built against [SikuliX](https://github.com/oculix-org/SikuliX1) 2.0.5, which is the jar the
-API stub is generated from.
+SikuliX now continues as [OculiX](https://github.com/oculix-org/Oculix), which is the one to
+choose unless you have a reason to stay on
+[SikuliX](https://github.com/oculix-org/SikuliX1) 2.0.5. Both work.
 
-SikuliX now continues as [OculiX](https://github.com/oculix-org/Oculix), which has not been
-tested here. Its jar is named `oculixapi-<version>-<platform>.jar`, which this extension
-does not pick up on its own, so point `sikuliVS.jarPath` at it rather than dropping it in
-your workspace.
+| | Jar to take | Java |
+|---|---|---|
+| OculiX 4.0.0 | `oculixide-<version>-<platform>.jar`. Its API jar is just a library now and cannot run scripts. | 17 or newer |
+| SikuliX 2.0.5 | `sikulixapi-<version>-<platform>.jar` or `sikulixide-<version>-<platform>.jar`. Either works. | |
+
+OculiX has only been tried on Linux so far.
 
 ## Features
 
@@ -89,13 +92,12 @@ step can be skipped.
 
 | What | For | If skipped |
 |---|---|---|
-| SikuliX API jar | Running and debugging | You are asked on your first run |
+| OculiX or SikuliX jar | Running and debugging | You are asked on your first run |
 | Python with opencv, numpy, pillow | The visual tools | You are asked the first time a tool needs it |
 | API stub | Completion, so `Region` is not undefined | Nothing asks again; run **SikuliVS: Set Up Script Completion** when you want it |
 
-The jar cannot be fetched for you, since SikuliX publishes a separate build per platform.
-Take `sikulixapi-<version>-<platform>.jar`, not the IDE jar, which restarts the Java runtime
-on startup and discards the options this extension sets. Drop it in a workspace root or set
+The jar cannot be fetched for you, since each platform has its own build. See
+[Which SikuliX](#which-sikulix) for which one to take, then drop it in a workspace root or set
 `sikuliVS.jarPath`.
 
 The Python environment is built on request, in the extension's own storage rather than your
@@ -113,11 +115,11 @@ folder that VS Code removes when the extension is uninstalled.
 
 | Setting | Default | Description |
 |---|---|---|
-| `sikuliVS.jarPath` | *(empty)* | The SikuliX API jar, which is platform specific. When empty, a `sikulix*.jar` in a workspace root is used; failing that you are prompted once and the choice is saved. |
+| `sikuliVS.jarPath` | *(empty)* | The OculiX or SikuliX jar, which is platform specific. When empty, an `oculixide*.jar` or else a `sikulix*.jar` in a workspace root is used; failing that you are prompted once and the choice is saved. |
 | `sikuliVS.javaPath` | *(empty)* | Java runtime used to launch SikuliX. It has to be headful, since a headless JRE cannot reach the screen at all. When empty, `JAVA_HOME` is tried, then `java` on `PATH`, then wherever this platform installs JVMs. |
 | `sikuliVS.pythonPath` | *(empty)* | Interpreter for the visual tools. When empty, a `.venv` beside the extension is tried, then the one **Set Up** built, then a `.venv` in a workspace root, then `python3` on `PATH` (`python` on Windows); the first that can import `cv2`, `numpy`, `PIL` and `tkinter` wins. It has to be an interpreter, not a `.cmd` or `.bat` wrapper. |
-| `sikuliVS.debugLevel` | `0` | SikuliX's `-d` level. `0` omits the option; `3` logs everything, including where startup fails. |
-| `sikuliVS.jvmArgs` | `[]` | Extra JVM arguments, e.g. `--enable-native-access=ALL-UNNAMED`. Nothing is added automatically except `-Dsun.java2d.uiScale=1`, which keeps Java's coordinates in the same pixels the visual tools use on a scaled display. |
+| `sikuliVS.debugLevel` | `0` | SikuliX's `-d` level. `0` omits the option; `3` logs everything, including where startup fails. OculiX's startup lines only appear above `0`. |
+| `sikuliVS.jvmArgs` | `[]` | Extra JVM arguments, e.g. `--enable-native-access=ALL-UNNAMED`. SikuliX 2.0.5 restarts Java on startup, so on that version these never reach the JVM running your script; set `JAVA_TOOL_OPTIONS` in the environment for those. Nothing is added automatically except `-Dsun.java2d.uiScale=1`, which keeps Java's coordinates in the same pixels the visual tools use on a scaled display. |
 | `sikuliVS.debug.captureMode` | `actions` | When a debugged script has its screen photographed. `actions` after every line that did something and at every stop, `stops` only when it stops, `off` never. |
 
 ## Notes
@@ -172,11 +174,11 @@ On Windows the last two become `py -m venv .venv` and
 `.venv\Scripts\pip install -r requirements.txt`. The interpreter is looked for at `./.venv`
 first, so nothing needs configuring.
 
-Drop the `sikulixapi-<version>-<platform>.jar` for your machine in the repo root. Only one,
-since the first `sikulix*.jar` in a workspace root wins and a jar for the wrong platform
-will not run. Then open the folder and press **F5** to launch an Extension Development Host,
+Drop the jar for your machine in the repo root. Only one, since a workspace root's first
+`oculixide*.jar`, or failing that its first `sikulix*.jar`, wins and a jar for the wrong
+platform will not run. Then open the folder and press **F5** to launch an Extension Development Host,
 and work on your automation scripts in that second window.
 
 ## Acknowledgement
 
-All hail RaiMan.
+All hail RaiMan and the 🦎/julien.

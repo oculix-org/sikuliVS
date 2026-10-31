@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { log, showError } from '../utils/output';
 import { isBundleDir } from '../utils/scriptTarget';
+import { rejectUnrunnableJar } from '../utils/sikulixConfig';
 import { setUpCompletion, completionIsSetUp } from '../commands/completion';
 import {
     createManagedEnvironment,
@@ -18,7 +19,7 @@ const OFFERED_KEY = 'sikuliVS.setupOffered';
 
 /**
  * Command: sikuliVS.setup
- * Walks the three things the extension cannot supply for itself: the SikuliX jar, a Python
+ * Walks the three things the extension cannot supply for itself: the jar, a Python
  * with the imaging libraries, and the API stub for the editor.
  *
  * Each is optional and serves a different feature, so each step says what it is for and
@@ -146,8 +147,8 @@ async function setUpJar(): Promise<boolean> {
     }
 
     const choice = await vscode.window.showInformationMessage(
-        'SikuliVS: Running scripts needs a SikuliX jar, such as sikulixapi-<version>-<platform>.jar. ' +
-        'It is not bundled, since each platform has its own build.',
+        'SikuliVS: Running scripts needs a jar: oculixide-<version>-<platform>.jar from OculiX, or ' +
+        'either jar from SikuliX 2.0.5. It is not bundled, since each platform has its own build.',
         'Select Jar...',
         'Skip'
     );
@@ -161,6 +162,10 @@ async function setUpJar(): Promise<boolean> {
         filters: { 'Java archive': ['jar'] }
     });
     if (!picked || picked.length === 0) {
+        return false;
+    }
+
+    if (await rejectUnrunnableJar(picked[0].fsPath)) {
         return false;
     }
 

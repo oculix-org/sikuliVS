@@ -160,7 +160,7 @@
         "sikuliVS.jarPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path to the SikuliX jar. It is platform specific, so use the one built for this machine, e.g. `sikulixapi-2.0.5-windows.jar` on Windows. OculiX runs scripts from its IDE jar, `oculixide-<version>-<platform>.jar`. When empty, a `sikulix*.jar` found in a workspace root is used."
+          "markdownDescription": "Absolute path to the jar. It is platform specific, so use the one built for this machine, e.g. `oculixide-4.0.0-windows.jar` on Windows. OculiX runs scripts from its IDE jar; for SikuliX 2.0.5 either jar works. When empty, an `oculixide*.jar` or else a `sikulix*.jar` found in a workspace root is used."
         },
         "sikuliVS.javaPath": {
           "type": "string",

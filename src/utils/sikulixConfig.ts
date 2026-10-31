@@ -4,6 +4,13 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { log } from './output';
 import { headfulMarker, javaBinary, jvmRoots } from './platform';
+import {
+    cannotRunScripts,
+    majorVersion,
+    meetsMinimumJava,
+    minimumJava,
+    pickWorkspaceJar
+} from './sikulixJar';
 
 export interface SikulixEnvironment {
     javaPath: string;
@@ -49,7 +56,7 @@ export async function resolveEnvironment(): Promise<SikulixEnvironment | null> {
         return null;
     }
 
-    const java = await resolveJava(config);
+    const java = await resolveJava(config, minimumJava(jarPath));
     if (!java) {
         return null;
     }
@@ -110,7 +117,7 @@ async function resolveJarPath(config: vscode.WorkspaceConfiguration): Promise<st
             );
             return null;
         }
-        return configured;
+        return await rejectUnrunnableJar(configured) ? null : configured;
     }
 
     const discovered = findJarInWorkspace();
@@ -123,7 +130,32 @@ async function resolveJarPath(config: vscode.WorkspaceConfiguration): Promise<st
 }
 
 /**
- * Looks for a `sikulix*.jar` at the top level of each workspace folder.
+ * The jar in use as things stand, for callers that must not prompt: the setting if it
+ * names a file, else what a workspace root offers.
+ */
+export function currentJar(): string | null {
+    const configured = vscode.workspace.getConfiguration('sikuliVS').get<string>('jarPath', '').trim();
+    return configured && fs.existsSync(configured) ? configured : findJarInWorkspace();
+}
+
+/**
+ * Says so when a jar could never run a script, which java would otherwise report as a bare
+ * "no main manifest attribute". Returns whether it was rejected.
+ */
+export async function rejectUnrunnableJar(jarPath: string): Promise<boolean> {
+    if (!cannotRunScripts(jarPath)) {
+        return false;
+    }
+
+    await vscode.window.showErrorMessage(
+        `SikuliVS: ${path.basename(jarPath)} is a library and cannot run scripts. OculiX runs ` +
+        'them from its IDE jar, oculixide-<version>-<platform>.jar.'
+    );
+    return true;
+}
+
+/**
+ * Looks at the top level of each workspace folder for a jar that can run scripts.
  */
 function findJarInWorkspace(): string | null {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -135,7 +167,7 @@ function findJarInWorkspace(): string | null {
             continue;
         }
 
-        const jar = entries.find(name => /^sikulix.*\.jar$/i.test(name));
+        const jar = pickWorkspaceJar(entries);
         if (jar) {
             return path.join(root, jar);
         }
@@ -146,7 +178,7 @@ function findJarInWorkspace(): string | null {
 
 async function promptForJar(config: vscode.WorkspaceConfiguration): Promise<string | null> {
     const choice = await vscode.window.showErrorMessage(
-        'SikuliVS: No SikuliX jar configured. Running scripts needs one, such as sikulixapi-<version>-<platform>.jar.',
+        'SikuliVS: No jar configured. Running scripts needs one, such as oculixide-<version>-<platform>.jar.',
         'Select Jar...'
     );
     if (choice !== 'Select Jar...') {
@@ -163,6 +195,10 @@ async function promptForJar(config: vscode.WorkspaceConfiguration): Promise<stri
     }
 
     const jarPath = picked[0].fsPath;
+    if (await rejectUnrunnableJar(jarPath)) {
+        return null;
+    }
+
     await config.update('jarPath', jarPath, vscode.ConfigurationTarget.Global);
     return jarPath;
 }
@@ -175,23 +211,30 @@ async function promptForJar(config: vscode.WorkspaceConfiguration): Promise<stri
  * `java` is the headless build, so the runtime that works has to be looked for rather
  * than assumed.
  */
-async function resolveJava(config: vscode.WorkspaceConfiguration): Promise<JavaRuntime | null> {
+async function resolveJava(
+    config: vscode.WorkspaceConfiguration,
+    minimum: number
+): Promise<JavaRuntime | null> {
     const configured = config.get<string>('javaPath', '').trim();
 
-    if (resolvedJava && resolvedJavaFor === configured) {
+    if (resolvedJava && resolvedJavaFor === configured && meetsMinimumJava(resolvedJava.version, minimum)) {
         return resolvedJava;
     }
 
     const runtime = configured
         ? await inspectJava(configured)
-        : await findUsableJava();
+        : await findUsableJava(minimum);
 
     if (!runtime) {
-        return promptForJava(config, configured);
+        return promptForJava(config, configured, minimum);
     }
 
     if (!runtime.headful) {
-        return reportHeadless(config, runtime);
+        return reportHeadless(config, runtime, minimum);
+    }
+
+    if (!meetsMinimumJava(runtime.version, minimum)) {
+        return reportTooOld(config, runtime, minimum);
     }
 
     log(`[run] java ${runtime.version} (${runtime.home})`);
@@ -204,7 +247,7 @@ async function resolveJava(config: vscode.WorkspaceConfiguration): Promise<JavaR
  * JAVA_HOME and PATH first, since an explicitly chosen runtime beats a guess; installed
  * JVMs are only scanned when neither of those can open a screen.
  */
-async function findUsableJava(): Promise<JavaRuntime | null> {
+async function findUsableJava(minimum: number): Promise<JavaRuntime | null> {
     const javaHome = process.env.JAVA_HOME ?? await macSelectedJavaHome();
     const preferred = [
         javaHome ? path.join(javaHome, 'bin', javaBinary()) : null,
@@ -213,12 +256,12 @@ async function findUsableJava(): Promise<JavaRuntime | null> {
 
     for (const candidate of preferred) {
         const runtime = await inspectJava(candidate);
-        if (runtime?.headful) {
+        if (runtime?.headful && meetsMinimumJava(runtime.version, minimum)) {
             return runtime;
         }
     }
 
-    return discoverInstalledJava();
+    return discoverInstalledJava(minimum);
 }
 
 /**
@@ -242,7 +285,7 @@ function macSelectedJavaHome(): Promise<string | null> {
  * Reads installed JVMs straight off disk — the release file gives the version and the
  * presence of the AWT library gives headfulness, so nothing has to be executed.
  */
-function discoverInstalledJava(): JavaRuntime | null {
+function discoverInstalledJava(minimum: number): JavaRuntime | null {
     const found: JavaRuntime[] = [];
     const seen = new Set<string>();
     const { roots, homeSuffix } = jvmRoots();
@@ -272,7 +315,9 @@ function discoverInstalledJava(): JavaRuntime | null {
         }
     }
 
-    const usable = found.filter(runtime => runtime.headful).sort(bySikulixPreference);
+    const usable = found
+        .filter(runtime => runtime.headful && meetsMinimumJava(runtime.version, minimum))
+        .sort(bySikulixPreference);
     return usable[0] ?? null;
 }
 
@@ -287,13 +332,6 @@ function bySikulixPreference(a: JavaRuntime, b: JavaRuntime): number {
         return aSupported ? -1 : 1;
     }
     return majorVersion(b.version) - majorVersion(a.version);
-}
-
-function majorVersion(version: string): number {
-    const parts = version.split('.');
-    // Pre-9 runtimes report as 1.8.x, where the major version is the second part.
-    const major = parts[0] === '1' ? parts[1] : parts[0];
-    return parseInt(major, 10) || 0;
 }
 
 function readReleaseVersion(home: string): string {
@@ -351,7 +389,8 @@ function javaSettings(javaPath: string): Promise<string> {
 
 async function reportHeadless(
     config: vscode.WorkspaceConfiguration,
-    runtime: JavaRuntime
+    runtime: JavaRuntime,
+    minimum: number
 ): Promise<JavaRuntime | null> {
     const choice = await vscode.window.showErrorMessage(
         `SikuliVS: The Java runtime at ${runtime.home} is headless (no ${MARKER.file}), so ` +
@@ -359,25 +398,44 @@ async function reportHeadless(
         'Select Java...'
     );
 
-    return choice === 'Select Java...' ? pickJava(config) : null;
+    return choice === 'Select Java...' ? pickJava(config, minimum) : null;
+}
+
+async function reportTooOld(
+    config: vscode.WorkspaceConfiguration,
+    runtime: JavaRuntime,
+    minimum: number
+): Promise<JavaRuntime | null> {
+    const choice = await vscode.window.showErrorMessage(
+        `SikuliVS: OculiX needs Java ${minimum} or newer, and the runtime at ${runtime.home} ` +
+        `is ${runtime.version}.`,
+        'Select Java...'
+    );
+
+    return choice === 'Select Java...' ? pickJava(config, minimum) : null;
 }
 
 async function promptForJava(
     config: vscode.WorkspaceConfiguration,
-    configured: string
+    configured: string,
+    minimum: number
 ): Promise<JavaRuntime | null> {
+    const required = minimum > 0 ? `Java ${minimum} or newer` : 'a headful JDK';
     const message = configured
         ? `SikuliVS: Could not run java at "${configured}".`
-        : 'SikuliVS: No Java runtime that can access the screen was found. SikuliX needs a headful JDK.';
+        : `SikuliVS: No Java runtime that can access the screen was found. This jar needs ${required}.`;
 
     const choice = await vscode.window.showErrorMessage(message, 'Select Java...');
-    return choice === 'Select Java...' ? pickJava(config) : null;
+    return choice === 'Select Java...' ? pickJava(config, minimum) : null;
 }
 
 /**
  * Falls back to picking the `java` binary by hand, saving it so the prompt is one-time.
  */
-async function pickJava(config: vscode.WorkspaceConfiguration): Promise<JavaRuntime | null> {
+async function pickJava(
+    config: vscode.WorkspaceConfiguration,
+    minimum: number
+): Promise<JavaRuntime | null> {
     const start = jvmRoots().roots.find(root => fs.existsSync(root));
     const picked = await vscode.window.showOpenDialog({
         canSelectMany: false,
@@ -401,6 +459,13 @@ async function pickJava(config: vscode.WorkspaceConfiguration): Promise<JavaRunt
         // undo first.
         await vscode.window.showErrorMessage(
             `SikuliVS: ${runtime.home} is headless (no ${MARKER.file}) and cannot run SikuliX.`
+        );
+        return null;
+    }
+
+    if (!meetsMinimumJava(runtime.version, minimum)) {
+        await vscode.window.showErrorMessage(
+            `SikuliVS: OculiX needs Java ${minimum} or newer, and ${runtime.home} is ${runtime.version}.`
         );
         return null;
     }

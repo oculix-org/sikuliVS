@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { log, showError } from '../utils/output';
 import { managedStubDir } from '../setup/managedEnvironment';
+import { currentJar } from '../utils/sikulixConfig';
+import { stubGeneration } from '../utils/sikulixJar';
 
 const STUB_PACKAGE = 'sikuli';
 const STUB_FILE = '__init__.pyi';
@@ -23,8 +25,45 @@ const PATH_SETTINGS = ['python.analysis.extraPaths', 'python.autoComplete.extraP
  */
 export function registerCompletionCommand(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
-        vscode.commands.registerCommand('sikuliVS.setupCompletion', () => setUpCompletion(context, true))
+        vscode.commands.registerCommand('sikuliVS.setupCompletion', () => setUpCompletion(context, true)),
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('sikuliVS.jarPath')) {
+                refreshStub(context);
+            }
+        })
     );
+
+    refreshStub(context);
+}
+
+function bundledStub(context: vscode.ExtensionContext): string {
+    return path.join(context.extensionPath, 'stubs', stubGeneration(currentJar()), STUB_FILE);
+}
+
+function installedStub(context: vscode.ExtensionContext): string {
+    return path.join(managedStubDir(context), STUB_PACKAGE, STUB_FILE);
+}
+
+/**
+ * Keeps an installed stub describing the jar in use. Does nothing until the user has set
+ * completion up. There is one installed copy per user, so windows on different generations
+ * at once share whichever was opened or changed last.
+ */
+function refreshStub(context: vscode.ExtensionContext): void {
+    try {
+        const destination = installedStub(context);
+        if (!fs.existsSync(destination)) {
+            return;
+        }
+
+        const source = bundledStub(context);
+        if (!fs.readFileSync(source).equals(fs.readFileSync(destination))) {
+            fs.copyFileSync(source, destination);
+            log(`[completion] stub updated to ${stubGeneration(currentJar())}`);
+        }
+    } catch (err) {
+        log(`[completion] could not refresh the stub: ${err}`);
+    }
 }
 
 /**
@@ -47,7 +86,7 @@ export async function setUpCompletion(
             return false;
         }
 
-        const source = path.join(context.extensionPath, 'stubs', STUB_PACKAGE, STUB_FILE);
+        const source = bundledStub(context);
         if (!fs.existsSync(source)) {
             await showError(`SikuliVS: The bundled API stub is missing from ${source}.`);
             return false;
@@ -57,7 +96,7 @@ export async function setUpCompletion(
             return false;
         }
 
-        const destination = path.join(managedStubDir(context), STUB_PACKAGE, STUB_FILE);
+        const destination = installedStub(context);
         fs.mkdirSync(path.dirname(destination), { recursive: true });
         fs.copyFileSync(source, destination);
         log(`[completion] stub written to ${destination}`);
@@ -75,7 +114,7 @@ export async function setUpCompletion(
 /** Whether this workspace already resolves the stub. */
 export function completionIsSetUp(context: vscode.ExtensionContext): boolean {
     const folder = targetFolder();
-    if (!folder || !fs.existsSync(path.join(managedStubDir(context), STUB_PACKAGE, STUB_FILE))) {
+    if (!folder || !fs.existsSync(installedStub(context))) {
         return false;
     }
 
