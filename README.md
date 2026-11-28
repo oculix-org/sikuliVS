@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/1cf62832-8dac-4345-b599-0f2453d79e64" width="900"
+       alt="SikuliVS: the OculiX gecko reaches out of a VS Code editor, picks an image out of the code and finds it on screen">
+</p>
+
+<p align="center">
+  <a href="https://github.com/oculix-org/sikuliVS/releases"><img src="https://img.shields.io/github/v/release/oculix-org/sikuliVS" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/VS%20Code-1.75%2B-007ACC" alt="VS Code 1.75 or newer">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+  <a href="https://github.com/oculix-org/Oculix"><img src="https://img.shields.io/badge/part%20of-OculiX-1e90ff" alt="Part of OculiX"></a>
+</p>
+
 # sikuliVS
 
 A VS Code / VSCodium extension that brings the SikuliX IDE's visual automation tools into
@@ -17,7 +29,9 @@ choose unless you have a reason to stay on
 | OculiX 4.0.0 | `oculixide-<version>-<platform>.jar`. Its API jar is just a library now and cannot run scripts. | 17 or newer |
 | SikuliX 2.0.5 | `sikulixapi-<version>-<platform>.jar` or `sikulixide-<version>-<platform>.jar`. Either works. | |
 
-OculiX has only been tried on Linux so far.
+OculiX has been tried on Linux and on Windows 10. On Windows 10 the image hover and the
+links above a line with an image also work in a plain `.py` that imports `oculix`, outside
+a `.sikuli` bundle.
 
 ## Features
 
@@ -77,7 +91,7 @@ needs an X server.
 ## Install
 
 Each release is a `.vsix` on the
-[Releases page](https://github.com/tyson-01/sikuliVS/releases). There is no marketplace
+[Releases page](https://github.com/oculix-org/sikuliVS/releases). There is no marketplace
 listing, so check back there for new versions rather than waiting to be offered one.
 
 ```bash
@@ -162,7 +176,7 @@ so use `%` or `.format()` in scripts you actually run.
 ## From source
 
 ```bash
-git clone https://github.com/tyson-01/sikuliVS.git
+git clone https://github.com/oculix-org/sikuliVS.git
 cd sikuliVS
 npm install
 
@@ -179,6 +193,31 @@ Drop the jar for your machine in the repo root. Only one, since a workspace root
 platform will not run. Then open the folder and press **F5** to launch an Extension Development Host,
 and work on your automation scripts in that second window.
 
+## Credits
+
+sikuliVS is the work of Tyson S ([@tyson-01](https://github.com/tyson-01)), who designed
+and wrote all of it on his own.
+
+What he built goes well past a set of shortcuts. There is a real debugger for Jython
+scripts, with breakpoints, conditions and stepping that never descends into SikuliX, so a
+`wait` or a `click` stays one step. There is a filmstrip of the screen through the run, so
+a failure can be looked at instead of guessed. And when an image is not found, the search
+is run again inside the region and across the whole screen, and both results are drawn on
+the screenshot: most `FindFailed` questions answer themselves right there. The pickers,
+the match preview that writes the tuned similarity back into the line, the resolution of
+templated image names and the test suite all come from the same hand.
+
+It is also carefully honest work. The README says what was tested and what was not, why
+Wayland cannot run a script, and that Preview Matches is a tuning aid and not a prediction.
+That is the kind of tool people can rely on.
+
+In November 2026 the repository moved into the
+[OculiX organisation](https://github.com/oculix-org), so that people looking for OculiX
+tooling find it. Nothing else changed: Tyson is its author and its maintainer, and he
+decides where it goes.
+
 ## Acknowledgement
 
 All hail RaiMan and the 🦎/julien.
+
+And a standing ovation for Tyson, for an insane amount of work.
